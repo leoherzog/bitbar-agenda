@@ -64,7 +64,7 @@ def main():
   events = []
   for cal in ids:
     thisCalInList = service.calendarList().get(calendarId=cal['id']).execute() # pylint: disable=no-member
-    thisCalsEvents = service.events().list(calendarId=cal['id'], timeMin=beginningOfDay, timeMax=endOfDay, maxResults=50, singleEvents=True).execute().get('items', []) # pylint: disable=no-member
+    thisCalsEvents = service.events().list(calendarId=cal['id'], timeMin=beginningOfDay, timeMax=endOfDay, maxResults=50, maxAttendees=1, singleEvents=True).execute().get('items', []) # pylint: disable=no-member
     for event in thisCalsEvents:
       event['summary'] = html.escape(event.get('summary', '')).replace('|', '∣') # reserved character for bitbar/argos. replace "vertical bar" with "divides" unicode character.
       event['icon'] = cal['icon']
@@ -76,11 +76,14 @@ def main():
         event['color'] = colors.get('calendar', {}).get(thisCalInList.get('colorId')).get('background')
     events = events + thisCalsEvents
 
-  # sort by start time
-  events.sort(key = lambda event : event['start'].get('dateTime', event['start'].get('date')))
-
   # remove names in the filter
   events = [x for x in events if not x.get('summary') in eventNamesToFilter]
+  
+  # remove events that have been declined, if attendees key exists
+  events = [x for x in events if not x.get('attendees') or x.get('attendees')[0].get('responseStatus', '') != 'declined']
+  
+  # sort by start time
+  events.sort(key = lambda event : event['start'].get('dateTime', event['start'].get('date')))
 
   now = datetime.datetime.now().astimezone()
 
