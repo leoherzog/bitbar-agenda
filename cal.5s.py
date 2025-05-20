@@ -13,10 +13,12 @@ import os
 import re
 import humanize
 import html
+import json
+import time
 from sys import platform
 from typing import Dict, List, Optional, Union, Any
 from googleapiclient.discovery import build
-from google_auth_oauthlib.flow import Flow
+from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 
@@ -34,11 +36,13 @@ ids = [
 ]
 useColors = True
 eventNamesToFilter = ['Work']
+CACHE_FILE = 'calendar_cache.json'
+CACHE_DURATION = 60  # seconds between API calls
 
 
 def get_credentials() -> Credentials:
     """
-    Get and refresh Google API credentials using the modern OAuth flow.
+    Get and refresh Google API credentials.
     Returns authenticated credentials object.
     """
     creds = None
@@ -54,17 +58,11 @@ def get_credentials() -> Credentials:
             # Refresh existing credentials
             creds.refresh(Request())
         else:
-            # If we need new credentials, use device flow for better security
-            flow = Flow.from_client_secrets_file(
+            # Use InstalledAppFlow for compatibility
+            flow = InstalledAppFlow.from_client_secrets_file(
                 'credentials.json',
-                scopes=['https://www.googleapis.com/auth/calendar.readonly'],
-                redirect_uri='urn:ietf:wg:oauth:2.0:oob')
-            
-            auth_url, _ = flow.authorization_url(prompt='consent')
-            print(f"Please visit this URL to authorize access: {auth_url}")
-            code = input("Enter the authorization code: ")
-            flow.fetch_token(code=code)
-            creds = flow.credentials
+                ['https://www.googleapis.com/auth/calendar.readonly'])
+            creds = flow.run_local_server(port=0)
             
         # Save credentials for next run
         with open(token_path, 'w') as token:
@@ -77,15 +75,12 @@ def findMeetingId(text: str) -> Optional[str]:
     """
     Find meeting URLs in text content.
     Returns the first match found or None.
-    Updated with comprehensive patterns from MeetingBar.
     """
     if not text:
         return None
     
     # thanks https://github.com/leits/MeetingBar/blob/master/MeetingBar/Services/MeetingServices.swift
-    
     meetingIdFormats = [
-        
         # Google
         r"https?://meet\.google\.com/(_meet/)?[a-z-]+",
         r"https?://hangouts\.google\.com/[^\s]*",
@@ -174,26 +169,39 @@ def format_time_until(now: datetime.datetime, start: datetime.datetime) -> str:
     """Format time until an event using natural language from humanize"""
     time_diff = start - now
     
-    # Use more natural time diff formatting from humanize 4.0+
     if time_diff.total_seconds() > 0:
         return humanize.naturaldelta(time_diff)
     else:
         return humanize.naturaldelta(-time_diff) + " ago"
 
 
-def main() -> None:
-    """Main function to display calendar events"""
-    # Set working directory based on platform
-    if platform == "darwin":
-        os.chdir(os.path.expanduser('~') + '/Library/Application Support/xbar/plugins')
-    elif platform == "linux" or platform == "linux2":
-        os.chdir(os.path.expanduser('~') + '/.config/argos/')
+def read_cache() -> tuple[List[Dict[str, Any]], float]:
+    """Read event data from cache file"""
+    try:
+        if os.path.exists(CACHE_FILE):
+            with open(CACHE_FILE, 'r') as f:
+                cache_data = json.load(f)
+                return cache_data['events'], cache_data['timestamp']
+    except Exception as e:
+        print(f"Error reading cache: {e}")
+    return [], 0
 
-    # Get credentials and build service
-    creds = get_credentials()
-    service = build('calendar', 'v3', credentials=creds)
 
-    # Get time boundaries for today
+def write_cache(events: List[Dict[str, Any]]):
+    """Write event data to cache file"""
+    try:
+        cache_data = {
+            'events': events,
+            'timestamp': time.time()
+        }
+        with open(CACHE_FILE, 'w') as f:
+            json.dump(cache_data, f)
+    except Exception as e:
+        print(f"Error writing cache: {e}")
+
+
+def fetch_events(service) -> List[Dict[str, Any]]:
+    """Fetch events from Google Calendar API"""
     now = datetime.datetime.now().astimezone()
     beginningOfDay = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     endOfDay = now.replace(hour=23, minute=59, second=59, microsecond=0).isoformat()
@@ -232,7 +240,7 @@ def main() -> None:
         except Exception as e:
             print(f"Error retrieving calendar {cal['id']}: {e}")
             print("---")
-            return
+            return []
 
     # Filter events
     # Remove events in filter list
@@ -243,7 +251,14 @@ def main() -> None:
     
     # Sort events by start time
     events.sort(key=lambda event: event['start'].get('dateTime', event['start'].get('date')))
+    
+    return events
 
+
+def display_events(events: List[Dict[str, Any]]):
+    """Display events in xbar/Argos format"""
+    now = datetime.datetime.now().astimezone()
+    
     # Display next upcoming meeting
     found_next_event = False
     for event in events:
@@ -332,6 +347,36 @@ def main() -> None:
     
     print("---")
     print("↻ Refresh | refresh=true terminal=false")
+
+
+def main() -> None:
+    """Main function to display calendar events"""
+    # Set working directory based on platform
+    if platform == "darwin":
+        os.chdir(os.path.expanduser('~') + '/Library/Application Support/xbar/plugins')
+    elif platform == "linux" or platform == "linux2":
+        os.chdir(os.path.expanduser('~') + '/.config/argos/')
+
+    # Check if we need to fetch from API or use cache
+    cached_events, timestamp = read_cache()
+    current_time = time.time()
+    
+    # Decide whether to use cache or fetch fresh data
+    if not cached_events or (current_time - timestamp) > CACHE_DURATION:
+        # Cache expired or doesn't exist, fetch fresh data
+        creds = get_credentials()
+        service = build('calendar', 'v3', credentials=creds)
+        events = fetch_events(service)
+        
+        # Cache the events for future runs
+        if events:
+            write_cache(events)
+    else:
+        # Use cached events
+        events = cached_events
+    
+    # Display events (using current time for time-based formatting)
+    display_events(events)
 
 
 if __name__ == '__main__':
