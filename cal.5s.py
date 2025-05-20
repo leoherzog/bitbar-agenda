@@ -37,7 +37,7 @@ ids = [
 useColors = True
 eventNamesToFilter = ['Work']
 CACHE_FILE = 'calendar_cache.json'
-CACHE_DURATION = 60  # seconds between API calls
+CACHE_DURATION = 30  # seconds between API calls
 
 
 def get_credentials() -> Credentials:
@@ -344,9 +344,6 @@ def display_events(events: List[Dict[str, Any]]):
             row = f"{event.get('icon')} {row}"
 
         print(row)
-    
-    print("---")
-    print("↻ Refresh | refresh=true terminal=false")
 
 
 def main() -> None:
