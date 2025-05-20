@@ -7,7 +7,7 @@ This is a Google Calendar Agenda script largely inspired by [MeetingBar](https:/
 1. Install [the Google Python Client Library](https://developers.google.com/calendar/quickstart/python) and [Humanize](https://pypi.org/project/humanize/) with  
 `pip install --upgrade google-api-python-client google-auth-httplib2 google-auth-oauthlib humanize`
 2. [Create a Google Workspace API Project](https://developers.google.com/workspace/guides/create-project), enable the Google Calendar API, create an oAuth client, and add yourself as a valid tester. Download the client credenetials file, rename to `credentials.json`, and move it to your xBar/Argos plugin directory.
-3. Copy [`cal.30s.py`](https://github.com/leoherzog/bitbar-agenda/blob/main/cal.30s.py) from this repository to your xBar/Argos plugin directory
+3. Copy [`cal.5s.py`](https://github.com/leoherzog/bitbar-agenda/blob/main/cal.30s.py) from this repository to your xBar/Argos plugin directory
 4. Edit the Calendar ID(s) that you'd like to check, as well as the (optional) Emoji icon, on line 22-31
 5. If you'd like to colorize the events, set `useColors` to `true` on line 32
 6. If you'd like to filter out events with certain names, add them to the `eventNamesToFilter` list on line 33
