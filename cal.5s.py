@@ -55,9 +55,16 @@ def get_credentials() -> Credentials:
     # If credentials don't exist or are invalid
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            # Refresh existing credentials
-            creds.refresh(Request())
-        else:
+            try:
+                # Refresh existing credentials
+                creds.refresh(Request())
+            except Exception:
+                # If refresh fails, remove token and get new credentials
+                if os.path.exists(token_path):
+                    os.remove(token_path)
+                creds = None
+        
+        if not creds or not creds.valid:
             # Use InstalledAppFlow for compatibility
             flow = InstalledAppFlow.from_client_secrets_file(
                 'credentials.json',
